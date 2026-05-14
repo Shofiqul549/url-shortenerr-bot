@@ -1,9 +1,11 @@
 """
-URL Shortener Telegram Bot - Fixed Version
-==========================================
-- প্রতিটা লিংক সত্যিই আলাদা random string দিয়ে unique করা হয়
-- Cutt.ly ও TinyURL পালা করে ব্যবহার হয়
-- শুধু লিংক দেখায়, কোনো নম্বর নেই
+URL Shortener Telegram Bot - Premium Version v2
+================================================
+- ২১টা নতুন Cutt.ly + ১৩টা TinyURL API key
+- পালা করে Cutt.ly ও TinyURL ব্যবহার করে
+- একটা key limit হলে অটো পরেরটায় যায়
+- প্রতিটা লিংক সম্পূর্ণ unique
+- Premium বাটন UI
 
 ইনস্টল:
     pip install python-telegram-bot requests
@@ -29,7 +31,9 @@ from telegram.ext import (
 
 TELEGRAM_TOKEN = "8733539808:AAH19m_M8QmbrOb_qTb8-S7zQR8AikobPZY"
 
+# ✅ সব Cutt.ly API Keys (পুরনো ১১টা + নতুন ২১টা = মোট ৩২টা)
 CUTTLY_KEYS = [
+    # পুরনো ১১টা
     "e44b823fb02a09939a39c169b27bc15ee199f",
     "8bbe84efcb5a66b174be860f8bae32b63d0da",
     "7ca062975c0c4142a75b6213f6a20fc87cbcb",
@@ -41,9 +45,33 @@ CUTTLY_KEYS = [
     "219be5fb9377a9d7fb7bfba8e622dfa0e09aa",
     "428220825764968c721492e1c07b2a0407112",
     "bce5c6bd9f305fec3706682226553b1636737",
+    # নতুন ২১টা
+    "ea1f70b8bac17a937521b5032d033374ad263",
+    "e4b8b30f63fd53f2f4da37399bc4ec77ab12a",
+    "5b5feb95193d6ea6208ae76e76cf2aa8ba57b",
+    "c408ea74e293ff2eff978729aef07fcdb3b51",
+    "cda0c97dc9643826f863f4f4c149417fa718b",
+    "fb8e35635f397f4ce17e61d21879f3debe49c",
+    "d0c8a2bf6aa865f9ca1330a36a2e37f28d816",
+    "1977e7e28b4395a38b4db19921b3eb8e1eb9c",
+    "16e4d523d663de08653d6711e33df74247575",
+    "7089691001e5771f3741863096d09456f22ae",
+    "760d2e3345bad8a6a0539bb4d5b12afa356c7",
+    "9f4ff63b083970b6fe7676c58a9822234c592",
+    "ba7a7abf7fc204ebcdf106f4d1af985efa861",
+    "9357c9cd8a50ee49995b7c91d28457d92d1ef",
+    "89b445fdd1acaffb075635712f6027e964c18",
+    "8cf2808a0e07fd2f8ae80f6546a4ba6b71f93",
+    "7187730320449eda3f75d46ceb9fbad9f751b",
+    "b568b88ff0181926e046a74fc86f788918462",
+    "5360a0a26bf2ad65ed7a991d044bc787e8927",
+    "4d58ce8def854d5831bbe2c136e917269045a",
+    "7e78adc04726b2833fcc6418567b872837027",
 ]
 
+# ✅ সব TinyURL API Keys (পুরনো ১২টা + নতুন ১টা = মোট ১৩টা)
 TINYURL_KEYS = [
+    # পুরনো ১২টা
     "jCzJccgmwKs5oGSrleSWRzz3G1mFYYQtuGXGJml5JQEJtiQVBCkH1en1whTZ",
     "wKHhgRP8LXBFHndu8KFtnvGUQyS4GxbOhVqGs3aO9cWk3H9Sdcb7Ihr6Tsaz",
     "wQvOPeI3Fv6KvVBs8eyqAJvyLtfspsA8b1lL4SQ60kfEoO0amLLc4HcXBkos",
@@ -55,6 +83,8 @@ TINYURL_KEYS = [
     "emxsndlU2ysRlJwhE4uYzFLKQqaZpMF5WRx78ZA9PPeJVJ5giidWmiwBnUgb",
     "kb88dOX28AMsObUPFCsUNpjcPd7FjW9zYwBaObh5sxxbxzw9MRkj934aY5Zf",
     "7wc4Db5YhqMjvkZIXnlPJSO4U33z6vO524MunuAxinDOmZELz5CA4TnnkfLx",
+    # নতুন ১টা
+    "A0AJOEnf4PtGeRHKNziu9FDYKIs3mukcrZkkQ4Hp1rA1tOMAVmN4fG2Yateg",
 ]
 
 cuttly_index = 0
@@ -69,14 +99,12 @@ logger = logging.getLogger(__name__)
 user_urls = {}
 
 
-def random_string(length=8):
-    """প্রতিটা লিংকের জন্য আলাদা random string বানাও"""
+def random_string(length=10):
     chars = string.ascii_letters + string.digits
     return ''.join(random.choices(chars, k=length))
 
 
 def make_unique_url(base_url: str) -> str:
-    """প্রতিবার সত্যিই আলাদা unique URL বানাও"""
     rand = random_string(10)
     if "?" in base_url:
         return f"{base_url}&_uid={rand}"
@@ -98,6 +126,7 @@ def shorten_cuttly(long_url: str) -> str:
             data = response.json()
             status = data.get("url", {}).get("status")
             if status == 7:
+                cuttly_index += 1
                 return data["url"]["shortLink"]
             else:
                 cuttly_index += 1
@@ -128,7 +157,7 @@ def shorten_tinyurl(long_url: str) -> str:
                 data = response.json()
                 short = data.get("data", {}).get("tiny_url")
                 if short:
-                    tinyurl_index += 1  # সফল হলেও পরের key তে যাও
+                    tinyurl_index += 1
                     return short
             tinyurl_index += 1
             attempts += 1
@@ -150,11 +179,9 @@ def shorten_tinyurl(long_url: str) -> str:
     return None
 
 
-def shorten_url(long_url: str) -> str:
-    """পালা করে Cutt.ly ও TinyURL ব্যবহার করো"""
+def shorten_url(base_url: str) -> str:
     global turn
-    # প্রতিবার unique URL বানাও
-    unique_url = make_unique_url(long_url)
+    unique_url = make_unique_url(base_url)
     if turn == 0:
         result = shorten_cuttly(unique_url)
         turn = 1
@@ -171,11 +198,13 @@ def is_valid_url(text: str) -> bool:
 def get_count_buttons():
     keyboard = [
         [
-            InlineKeyboardButton("1️⃣0️⃣ ১০টা", callback_data="count_10"),
+            InlineKeyboardButton("🔟 ১০টা", callback_data="count_10"),
             InlineKeyboardButton("2️⃣0️⃣ ২০টা", callback_data="count_20"),
+            InlineKeyboardButton("3️⃣0️⃣ ৩০টা", callback_data="count_30"),
         ],
         [
             InlineKeyboardButton("5️⃣0️⃣ ৫০টা", callback_data="count_50"),
+            InlineKeyboardButton("7️⃣5️⃣ ৭৫টা", callback_data="count_75"),
             InlineKeyboardButton("💯 ১০০টা", callback_data="count_100"),
         ],
     ]
@@ -184,12 +213,13 @@ def get_count_buttons():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 *স্বাগতম URL Shortener Bot এ!*\n\n"
-        "🔗 যেকোনো লিংক পাঠাও\n"
-        "তারপর কতটা short লিংক চাও বেছে নাও!\n\n"
-        "✅ Cutt.ly ও TinyURL পালা করে ব্যবহার হবে\n"
-        "✅ প্রতিটা লিংক সম্পূর্ণ আলাদা হবে\n"
-        "✅ Unlimited লিংক বানাতে পারবে",
+        "⚡ *URL Shortener Bot* ⚡\n\n"
+        "🔗 লিংক পাঠাও → কতটা চাও বেছে নাও → ব্যস!\n\n"
+        "✅ *৩২টা Cutt.ly + ১৩টা TinyURL key*\n"
+        "✅ প্রতিটা লিংক সম্পূর্ণ আলাদা\n"
+        "✅ Unlimited ব্যবহার করা যাবে\n"
+        "✅ 24/7 চলে\n\n"
+        "📌 এখনই যেকোনো লিংক পাঠাও!",
         parse_mode="Markdown"
     )
 
@@ -199,7 +229,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_valid_url(text):
         await update.message.reply_text(
-            "⚠️ Valid URL দাও!\n`http://` বা `https://` দিয়ে শুরু হতে হবে।",
+            "⚠️ *Valid URL দাও!*\n`http://` বা `https://` দিয়ে শুরু হতে হবে।",
             parse_mode="Markdown"
         )
         return
@@ -208,7 +238,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_urls[user_id] = text
 
     await update.message.reply_text(
-        "✅ *লিংক পেয়েছি!*\n\n👇 কতটা Short লিংক বানাবে?",
+        "✅ *লিংক পেয়েছি!*\n\n"
+        "👇 *কতটা Short লিংক বানাবে?*",
         parse_mode="Markdown",
         reply_markup=get_count_buttons()
     )
@@ -232,7 +263,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await query.edit_message_text(
-        f"⏳ *{count}টি Short লিংক বানানো হচ্ছে...*\nএকটু অপেক্ষা করো 🙏",
+        f"⏳ *{count}টি Short লিংক বানানো হচ্ছে...*\n"
+        f"একটু অপেক্ষা করো 🙏",
         parse_mode="Markdown"
     )
 
@@ -255,7 +287,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
 
-        time.sleep(0.3)
+        time.sleep(0.2)
 
     if not short_links:
         await query.edit_message_text("❌ কোনো লিংক বানানো যায়নি। আবার চেষ্টা করো।")
@@ -267,7 +299,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-    # শুধু লিংক পাঠাও, কোনো নম্বর নেই
+    # শুধু লিংক পাঠাও
     chunk_size = 20
     for chunk_start in range(0, len(short_links), chunk_size):
         chunk = short_links[chunk_start:chunk_start + chunk_size]
@@ -275,7 +307,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(0.5)
 
     await update.effective_message.reply_text(
-        "🔄 আরো লিংক বানাতে নতুন লিংক পাঠাও!",
+        "🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
+        parse_mode="Markdown",
         reply_markup=get_count_buttons()
     )
 
@@ -285,7 +318,9 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    print("🤖 URL Shortener Bot চালু হচ্ছে...")
+    print("🤖 URL Shortener Premium Bot চালু হচ্ছে...")
+    print(f"✅ Cutt.ly keys: {len(CUTTLY_KEYS)}টা")
+    print(f"✅ TinyURL keys: {len(TINYURL_KEYS)}টা")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
