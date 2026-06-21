@@ -1,11 +1,9 @@
 """
-URL Shortener Telegram Bot - Premium Version v2
-================================================
-- ২১টা নতুন Cutt.ly + ১৩টা TinyURL API key
-- পালা করে Cutt.ly ও TinyURL ব্যবহার করে
-- একটা key limit হলে অটো পরেরটায় যায়
+URL Shortener Telegram Bot - Premium v3
+========================================
+- ৩টা shortener বেছে নেওয়া যায়: TinyURL, Cutt.ly, Airbridge
+- কতটা লিংক চাও বাটনে বেছে নাও
 - প্রতিটা লিংক সম্পূর্ণ unique
-- Premium বাটন UI
 
 ইনস্টল:
     pip install python-telegram-bot requests
@@ -31,9 +29,12 @@ from telegram.ext import (
 
 TELEGRAM_TOKEN = "8733539808:AAH19m_M8QmbrOb_qTb8-S7zQR8AikobPZY"
 
-# ✅ সব Cutt.ly API Keys (পুরনো ১১টা + নতুন ২১টা = মোট ৩২টা)
+# Airbridge
+AIRBRIDGE_APP_NAME = "fullmoviewatch"
+AIRBRIDGE_API_TOKEN = "87e4fca5dc1e426e8f4e093696481f8a"
+
+# Cutt.ly API Keys
 CUTTLY_KEYS = [
-    # পুরনো ১১টা
     "e44b823fb02a09939a39c169b27bc15ee199f",
     "8bbe84efcb5a66b174be860f8bae32b63d0da",
     "7ca062975c0c4142a75b6213f6a20fc87cbcb",
@@ -45,7 +46,6 @@ CUTTLY_KEYS = [
     "219be5fb9377a9d7fb7bfba8e622dfa0e09aa",
     "428220825764968c721492e1c07b2a0407112",
     "bce5c6bd9f305fec3706682226553b1636737",
-    # নতুন ২১টা
     "ea1f70b8bac17a937521b5032d033374ad263",
     "e4b8b30f63fd53f2f4da37399bc4ec77ab12a",
     "5b5feb95193d6ea6208ae76e76cf2aa8ba57b",
@@ -69,9 +69,8 @@ CUTTLY_KEYS = [
     "7e78adc04726b2833fcc6418567b872837027",
 ]
 
-# ✅ সব TinyURL API Keys (পুরনো ১২টা + নতুন ১টা = মোট ১৩টা)
+# TinyURL API Keys
 TINYURL_KEYS = [
-    # পুরনো ১২টা
     "jCzJccgmwKs5oGSrleSWRzz3G1mFYYQtuGXGJml5JQEJtiQVBCkH1en1whTZ",
     "wKHhgRP8LXBFHndu8KFtnvGUQyS4GxbOhVqGs3aO9cWk3H9Sdcb7Ihr6Tsaz",
     "wQvOPeI3Fv6KvVBs8eyqAJvyLtfspsA8b1lL4SQ60kfEoO0amLLc4HcXBkos",
@@ -83,20 +82,20 @@ TINYURL_KEYS = [
     "emxsndlU2ysRlJwhE4uYzFLKQqaZpMF5WRx78ZA9PPeJVJ5giidWmiwBnUgb",
     "kb88dOX28AMsObUPFCsUNpjcPd7FjW9zYwBaObh5sxxbxzw9MRkj934aY5Zf",
     "7wc4Db5YhqMjvkZIXnlPJSO4U33z6vO524MunuAxinDOmZELz5CA4TnnkfLx",
-    # নতুন ১টা
     "A0AJOEnf4PtGeRHKNziu9FDYKIs3mukcrZkkQ4Hp1rA1tOMAVmN4fG2Yateg",
 ]
 
 cuttly_index = 0
 tinyurl_index = 0
-turn = 0
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-user_urls = {}
+
+# ইউজারের ডেটা সেভ
+user_data = {}
 
 
 def random_string(length=10):
@@ -165,7 +164,7 @@ def shorten_tinyurl(long_url: str) -> str:
             tinyurl_index += 1
             attempts += 1
 
-    # সব key শেষ হলে ফ্রি endpoint
+    # Fallback
     try:
         fallback = requests.get(
             "https://tinyurl.com/api-create.php",
@@ -179,23 +178,57 @@ def shorten_tinyurl(long_url: str) -> str:
     return None
 
 
-def shorten_url(base_url: str) -> str:
-    global turn
-    unique_url = make_unique_url(base_url)
-    if turn == 0:
-        result = shorten_cuttly(unique_url)
-        turn = 1
-    else:
-        result = shorten_tinyurl(unique_url)
-        turn = 0
-    return result
+def shorten_airbridge(long_url: str) -> str:
+    try:
+        headers = {
+            "Authorization": f"Bearer {AIRBRIDGE_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "channel": "telegram",
+            "campaignParams": {
+                "campaign": "marketing"
+            },
+            "fallbackPaths": {
+                "desktop": long_url,
+                "ios": long_url,
+                "android": long_url
+            }
+        }
+        response = requests.post(
+            f"https://api.airbridge.io/v1/apps/{AIRBRIDGE_APP_NAME}/tracking-links",
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            short = data.get("data", {}).get("shortUrl")
+            if short:
+                return short
+        return None
+    except:
+        return None
 
 
 def is_valid_url(text: str) -> bool:
     return text.startswith("http://") or text.startswith("https://")
 
 
+def get_shortener_buttons():
+    """shortener বেছে নেওয়ার বাটন"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔵 TinyURL", callback_data="service_tinyurl"),
+            InlineKeyboardButton("🟢 Cutt.ly", callback_data="service_cuttly"),
+            InlineKeyboardButton("🟠 Airbridge", callback_data="service_airbridge"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_count_buttons():
+    """কতটা লিংক বাটন"""
     keyboard = [
         [
             InlineKeyboardButton("🔟 ১০টা", callback_data="count_10"),
@@ -214,11 +247,14 @@ def get_count_buttons():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚡ *URL Shortener Bot* ⚡\n\n"
-        "🔗 লিংক পাঠাও → কতটা চাও বেছে নাও → ব্যস!\n\n"
-        "✅ *৩২টা Cutt.ly + ১৩টা TinyURL key*\n"
-        "✅ প্রতিটা লিংক সম্পূর্ণ আলাদা\n"
-        "✅ Unlimited ব্যবহার করা যাবে\n"
-        "✅ 24/7 চলে\n\n"
+        "🔗 লিংক পাঠাও\n"
+        "↓ shortener বেছে নাও\n"
+        "↓ কতটা চাও বেছে নাও\n"
+        "↓ ব্যস!\n\n"
+        "✅ *৩টা Shortener:*\n"
+        "🔵 TinyURL — ১৩টা API key\n"
+        "🟢 Cutt.ly — ৩২টা API key\n"
+        "🟠 Airbridge — Premium tracking\n\n"
         "📌 এখনই যেকোনো লিংক পাঠাও!",
         parse_mode="Markdown"
     )
@@ -235,13 +271,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    user_urls[user_id] = text
+    user_data[user_id] = {"url": text, "service": None}
 
     await update.message.reply_text(
-        "✅ *লিংক পেয়েছি!*\n\n"
-        "👇 *কতটা Short লিংক বানাবে?*",
+        f"✅ *লিংক পেয়েছি!*\n\n"
+        f"🔗 `{text}`\n\n"
+        f"👇 *কোন shortener দিয়ে short করবে?*",
         parse_mode="Markdown",
-        reply_markup=get_count_buttons()
+        reply_markup=get_shortener_buttons()
     )
 
 
@@ -252,65 +289,106 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = query.data
 
-    if not data.startswith("count_"):
+    # Shortener বেছে নেওয়া
+    if data.startswith("service_"):
+        service = data.split("_")[1]
+
+        if user_id not in user_data:
+            await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
+            return
+
+        user_data[user_id]["service"] = service
+
+        service_names = {
+            "tinyurl": "🔵 TinyURL",
+            "cuttly": "🟢 Cutt.ly",
+            "airbridge": "🟠 Airbridge"
+        }
+
+        await query.edit_message_text(
+            f"✅ *{service_names[service]}* সিলেক্ট হয়েছে!\n\n"
+            f"👇 *কতটা Short লিংক বানাবে?*",
+            parse_mode="Markdown",
+            reply_markup=get_count_buttons()
+        )
         return
 
-    count = int(data.split("_")[1])
-    base_url = user_urls.get(user_id)
+    # Count বেছে নেওয়া
+    if data.startswith("count_"):
+        count = int(data.split("_")[1])
 
-    if not base_url:
-        await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
-        return
+        if user_id not in user_data or not user_data[user_id].get("url"):
+            await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
+            return
 
-    await query.edit_message_text(
-        f"⏳ *{count}টি Short লিংক বানানো হচ্ছে...*\n"
-        f"একটু অপেক্ষা করো 🙏",
-        parse_mode="Markdown"
-    )
+        base_url = user_data[user_id]["url"]
+        service = user_data[user_id].get("service", "tinyurl")
 
-    short_links = []
-    failed = 0
+        service_names = {
+            "tinyurl": "🔵 TinyURL",
+            "cuttly": "🟢 Cutt.ly",
+            "airbridge": "🟠 Airbridge"
+        }
 
-    for i in range(1, count + 1):
-        short = shorten_url(base_url)
-        if short:
-            short_links.append(short)
-        else:
-            failed += 1
+        await query.edit_message_text(
+            f"⏳ *{service_names[service]} দিয়ে {count}টি লিংক বানানো হচ্ছে...*\n"
+            f"একটু অপেক্ষা করো 🙏",
+            parse_mode="Markdown"
+        )
 
-        if i % 10 == 0:
-            try:
-                await query.edit_message_text(
-                    f"⏳ *{i}/{count} টি হয়েছে...*",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
+        short_links = []
+        failed = 0
 
-        time.sleep(0.2)
+        for i in range(1, count + 1):
+            unique_url = make_unique_url(base_url)
 
-    if not short_links:
-        await query.edit_message_text("❌ কোনো লিংক বানানো যায়নি। আবার চেষ্টা করো।")
-        return
+            if service == "tinyurl":
+                short = shorten_tinyurl(unique_url)
+            elif service == "cuttly":
+                short = shorten_cuttly(unique_url)
+            elif service == "airbridge":
+                short = shorten_airbridge(unique_url)
+            else:
+                short = shorten_tinyurl(unique_url)
 
-    await query.edit_message_text(
-        f"✅ *{len(short_links)}টি Short লিংক তৈরি হয়েছে!*\n"
-        f"{'⚠️ ' + str(failed) + 'টি ব্যর্থ' if failed > 0 else '🎉 সব সফল!'}",
-        parse_mode="Markdown"
-    )
+            if short:
+                short_links.append(short)
+            else:
+                failed += 1
 
-    # শুধু লিংক পাঠাও
-    chunk_size = 20
-    for chunk_start in range(0, len(short_links), chunk_size):
-        chunk = short_links[chunk_start:chunk_start + chunk_size]
-        await update.effective_message.reply_text("\n".join(chunk))
-        time.sleep(0.5)
+            if i % 10 == 0:
+                try:
+                    await query.edit_message_text(
+                        f"⏳ *{i}/{count} টি হয়েছে...*",
+                        parse_mode="Markdown"
+                    )
+                except:
+                    pass
 
-    await update.effective_message.reply_text(
-        "🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
-        parse_mode="Markdown",
-        reply_markup=get_count_buttons()
-    )
+            time.sleep(0.3)
+
+        if not short_links:
+            await query.edit_message_text("❌ কোনো লিংক বানানো যায়নি। আবার চেষ্টা করো।")
+            return
+
+        await query.edit_message_text(
+            f"✅ *{len(short_links)}টি Short লিংক তৈরি হয়েছে!*\n"
+            f"{'⚠️ ' + str(failed) + 'টি ব্যর্থ' if failed > 0 else '🎉 সব সফল!'}",
+            parse_mode="Markdown"
+        )
+
+        # শুধু লিংক পাঠাও
+        chunk_size = 20
+        for chunk_start in range(0, len(short_links), chunk_size):
+            chunk = short_links[chunk_start:chunk_start + chunk_size]
+            await update.effective_message.reply_text("\n".join(chunk))
+            time.sleep(0.5)
+
+        await update.effective_message.reply_text(
+            "🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
+            parse_mode="Markdown",
+            reply_markup=get_shortener_buttons()
+        )
 
 
 async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,9 +396,10 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    print("🤖 URL Shortener Premium Bot চালু হচ্ছে...")
+    print("🤖 URL Shortener Premium Bot v3 চালু হচ্ছে...")
     print(f"✅ Cutt.ly keys: {len(CUTTLY_KEYS)}টা")
     print(f"✅ TinyURL keys: {len(TINYURL_KEYS)}টা")
+    print(f"✅ Airbridge App: {AIRBRIDGE_APP_NAME}")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
