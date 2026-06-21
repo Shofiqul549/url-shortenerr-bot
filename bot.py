@@ -1,8 +1,8 @@
 """
-URL Shortener Telegram Bot - Premium v3 Fixed
-==============================================
-- Airbridge API endpoint fixed
-- TinyURL, Cutt.ly, Airbridge বেছে নেওয়া যায়
+URL Shortener Telegram Bot - Premium v4
+========================================
+মোড ১: Auto Mix — Cutt.ly → TinyURL → Spoo.me পালা করে
+মোড ২: Single — যেকোনো একটা দিয়ে short করো
 
 ইনস্টল:
     pip install python-telegram-bot requests
@@ -28,8 +28,8 @@ from telegram.ext import (
 
 TELEGRAM_TOKEN = "8733539808:AAH19m_M8QmbrOb_qTb8-S7zQR8AikobPZY"
 
-# Airbridge — Tracking Link API Token ব্যবহার করো
-AIRBRIDGE_TRACKING_TOKEN = "87e4fca5dc1e426e8f4e093696481f8a"
+# Spoo.me API Key
+SPOOME_API_KEY = "spoo_7jx8npCBVV-uIjaNOo8RN1pPAKOyW9Hp7I4g4E9KDuQ"
 
 # Cutt.ly API Keys
 CUTTLY_KEYS = [
@@ -85,6 +85,7 @@ TINYURL_KEYS = [
 
 cuttly_index = 0
 tinyurl_index = 0
+mix_turn = 0  # 0=Cutt.ly, 1=TinyURL, 2=Spoo.me
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -159,7 +160,6 @@ def shorten_tinyurl(long_url: str) -> str:
         except:
             tinyurl_index += 1
             attempts += 1
-
     # Fallback
     try:
         fallback = requests.get(
@@ -174,53 +174,57 @@ def shorten_tinyurl(long_url: str) -> str:
     return None
 
 
-def shorten_airbridge(long_url: str) -> str:
-    """Airbridge Tracking Link API দিয়ে short করো"""
+def shorten_spoome(long_url: str) -> str:
     try:
-        headers = {
-            "Authorization": f"Bearer {AIRBRIDGE_TRACKING_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "channel": "facebook",
-            "campaignParams": {
-                "campaign": "marketing"
-            },
-            "fallbackPaths": {
-                "desktop": long_url,
-                "ios": long_url,
-                "android": long_url
-            }
-        }
         response = requests.post(
-            "https://api.airbridge.io/v1/tracking-links",
-            json=payload,
-            headers=headers,
-            timeout=15
+            "https://spoo.me/",
+            data={"url": long_url, "api-key": SPOOME_API_KEY},
+            headers={"Accept": "application/json"},
+            timeout=10
         )
-        if response.status_code in [200, 201]:
+        if response.status_code == 200:
             data = response.json()
-            short = data.get("data", {}).get("trackingLink", {}).get("shortUrl")
+            short = data.get("short_url")
             if short:
                 return short
-        logger.error(f"Airbridge error: {response.status_code} - {response.text}")
         return None
-    except Exception as e:
-        logger.error(f"Airbridge exception: {e}")
+    except:
         return None
+
+
+def shorten_mix(base_url: str) -> str:
+    """Cutt.ly → TinyURL → Spoo.me পালা করে"""
+    global mix_turn
+    unique_url = make_unique_url(base_url)
+
+    if mix_turn == 0:
+        result = shorten_cuttly(unique_url)
+        mix_turn = 1
+    elif mix_turn == 1:
+        result = shorten_tinyurl(unique_url)
+        mix_turn = 2
+    else:
+        result = shorten_spoome(unique_url)
+        mix_turn = 0
+
+    return result
 
 
 def is_valid_url(text: str) -> bool:
     return text.startswith("http://") or text.startswith("https://")
 
 
-def get_shortener_buttons():
+def get_main_menu():
+    """মেইন মেনু — মোড বেছে নাও"""
     keyboard = [
         [
-            InlineKeyboardButton("🔵 TinyURL", callback_data="service_tinyurl"),
-            InlineKeyboardButton("🟢 Cutt.ly", callback_data="service_cuttly"),
-            InlineKeyboardButton("🟠 Airbridge", callback_data="service_airbridge"),
-        ]
+            InlineKeyboardButton("🔀 Auto Mix", callback_data="mode_mix"),
+        ],
+        [
+            InlineKeyboardButton("🟢 Cutt.ly", callback_data="mode_cuttly"),
+            InlineKeyboardButton("🔵 TinyURL", callback_data="mode_tinyurl"),
+            InlineKeyboardButton("🟣 Spoo.me", callback_data="mode_spoome"),
+        ],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -228,13 +232,13 @@ def get_shortener_buttons():
 def get_count_buttons():
     keyboard = [
         [
+            InlineKeyboardButton("1️⃣ Single", callback_data="count_1"),
             InlineKeyboardButton("🔟 ১০টা", callback_data="count_10"),
             InlineKeyboardButton("2️⃣0️⃣ ২০টা", callback_data="count_20"),
-            InlineKeyboardButton("3️⃣0️⃣ ৩০টা", callback_data="count_30"),
         ],
         [
+            InlineKeyboardButton("3️⃣0️⃣ ৩০টা", callback_data="count_30"),
             InlineKeyboardButton("5️⃣0️⃣ ৫০টা", callback_data="count_50"),
-            InlineKeyboardButton("7️⃣5️⃣ ৭৫টা", callback_data="count_75"),
             InlineKeyboardButton("💯 ১০০টা", callback_data="count_100"),
         ],
     ]
@@ -244,12 +248,13 @@ def get_count_buttons():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚡ *URL Shortener Bot* ⚡\n\n"
-        "🔗 লিংক পাঠাও → shortener বেছে নাও → কতটা চাও বেছে নাও\n\n"
-        "✅ *৩টা Shortener:*\n"
-        "🔵 TinyURL — ১২টা API key\n"
-        "🟢 Cutt.ly — ৩২টা API key\n"
-        "🟠 Airbridge — Tracking link\n\n"
-        "📌 এখনই যেকোনো লিংক পাঠাও!",
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🔀 *Auto Mix* — Cutt.ly → TinyURL → Spoo.me পালা করে\n"
+        "🟢 *Cutt.ly Only* — শুধু Cutt.ly দিয়ে\n"
+        "🔵 *TinyURL Only* — শুধু TinyURL দিয়ে\n"
+        "🟣 *Spoo.me Only* — শুধু Spoo.me দিয়ে\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "📌 *এখনই যেকোনো লিংক পাঠাও!*",
         parse_mode="Markdown"
     )
 
@@ -265,14 +270,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    user_data[user_id] = {"url": text, "service": None}
+    user_data[user_id] = {"url": text, "mode": None}
 
     await update.message.reply_text(
         f"✅ *লিংক পেয়েছি!*\n\n"
         f"🔗 `{text}`\n\n"
-        f"👇 *কোন shortener দিয়ে short করবে?*",
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"👇 *কোন মোডে Short করবে?*",
         parse_mode="Markdown",
-        reply_markup=get_shortener_buttons()
+        reply_markup=get_main_menu()
     )
 
 
@@ -283,29 +289,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = query.data
 
-    if data.startswith("service_"):
-        service = data.split("_")[1]
+    # মোড সিলেক্ট
+    if data.startswith("mode_"):
+        mode = data.split("_")[1]
 
         if user_id not in user_data:
             await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
             return
 
-        user_data[user_id]["service"] = service
+        user_data[user_id]["mode"] = mode
 
-        service_names = {
-            "tinyurl": "🔵 TinyURL",
-            "cuttly": "🟢 Cutt.ly",
-            "airbridge": "🟠 Airbridge"
+        mode_names = {
+            "mix": "🔀 Auto Mix (Cutt.ly → TinyURL → Spoo.me)",
+            "cuttly": "🟢 Cutt.ly Only",
+            "tinyurl": "🔵 TinyURL Only",
+            "spoome": "🟣 Spoo.me Only",
         }
 
         await query.edit_message_text(
-            f"✅ *{service_names[service]}* সিলেক্ট হয়েছে!\n\n"
+            f"✅ *{mode_names[mode]}* সিলেক্ট হয়েছে!\n\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
             f"👇 *কতটা Short লিংক বানাবে?*",
             parse_mode="Markdown",
             reply_markup=get_count_buttons()
         )
         return
 
+    # Count সিলেক্ট
     if data.startswith("count_"):
         count = int(data.split("_")[1])
 
@@ -314,16 +324,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         base_url = user_data[user_id]["url"]
-        service = user_data[user_id].get("service", "tinyurl")
+        mode = user_data[user_id].get("mode", "mix")
 
-        service_names = {
-            "tinyurl": "🔵 TinyURL",
+        mode_names = {
+            "mix": "🔀 Auto Mix",
             "cuttly": "🟢 Cutt.ly",
-            "airbridge": "🟠 Airbridge"
+            "tinyurl": "🔵 TinyURL",
+            "spoome": "🟣 Spoo.me",
         }
 
         await query.edit_message_text(
-            f"⏳ *{service_names[service]} দিয়ে {count}টি লিংক বানানো হচ্ছে...*\n"
+            f"⏳ *{mode_names[mode]} দিয়ে {count}টি লিংক বানানো হচ্ছে...*\n"
             f"একটু অপেক্ষা করো 🙏",
             parse_mode="Markdown"
         )
@@ -332,17 +343,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         failed = 0
 
         for i in range(1, count + 1):
-            unique_url = make_unique_url(base_url)
-
-            if service == "tinyurl":
-                short = shorten_tinyurl(unique_url)
-            elif service == "cuttly":
-                short = shorten_cuttly(unique_url)
-            elif service == "airbridge":
-                short = shorten_airbridge(unique_url)
-                time.sleep(0.5)  # Airbridge rate limit এড়াতে
+            if mode == "mix":
+                short = shorten_mix(base_url)
             else:
-                short = shorten_tinyurl(unique_url)
+                unique_url = make_unique_url(base_url)
+                if mode == "cuttly":
+                    short = shorten_cuttly(unique_url)
+                elif mode == "tinyurl":
+                    short = shorten_tinyurl(unique_url)
+                elif mode == "spoome":
+                    short = shorten_spoome(unique_url)
+                else:
+                    short = shorten_mix(base_url)
 
             if short:
                 short_links.append(short)
@@ -372,6 +384,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+        # শুধু লিংক পাঠাও
         chunk_size = 20
         for chunk_start in range(0, len(short_links), chunk_size):
             chunk = short_links[chunk_start:chunk_start + chunk_size]
@@ -379,9 +392,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time.sleep(0.5)
 
         await update.effective_message.reply_text(
+            "━━━━━━━━━━━━━━━━━━\n"
             "🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
             parse_mode="Markdown",
-            reply_markup=get_shortener_buttons()
+            reply_markup=get_main_menu()
         )
 
 
@@ -390,10 +404,10 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    print("🤖 URL Shortener Premium Bot চালু হচ্ছে...")
+    print("🤖 URL Shortener Premium Bot v4 চালু হচ্ছে...")
     print(f"✅ Cutt.ly keys: {len(CUTTLY_KEYS)}টা")
     print(f"✅ TinyURL keys: {len(TINYURL_KEYS)}টা")
-    print(f"✅ Airbridge: সক্রিয়")
+    print(f"✅ Spoo.me: সক্রিয়")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
