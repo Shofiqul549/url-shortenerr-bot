@@ -1,14 +1,8 @@
 """
-URL Shortener Telegram Bot - Premium v5
-========================================
-মোড:
-  🔀 Auto Mix     — Cutt.ly → TinyURL → Spoo.me পালা করে
-  🔗 Cutt.ly+TinyURL  — একটা Cutt.ly একটা TinyURL
-  🔗 TinyURL+Spoo.me  — একটা TinyURL একটা Spoo.me
-  🔗 Cutt.ly+Spoo.me  — একটা Cutt.ly একটা Spoo.me
-  🟢 Cutt.ly Only — শুধু Cutt.ly
-  🔵 TinyURL Only — শুধু TinyURL
-  🟣 Spoo.me Only — শুধু Spoo.me
+URL Shortener Telegram Bot - Premium v5 Fixed
+==============================================
+- Spoo.me API fix (no API key needed)
+- TinyURL, Cutt.ly, Spoo.me সব মোড
 
 ইনস্টল:
     pip install python-telegram-bot requests
@@ -33,8 +27,6 @@ from telegram.ext import (
 )
 
 TELEGRAM_TOKEN = "8733539808:AAH19m_M8QmbrOb_qTb8-S7zQR8AikobPZY"
-
-SPOOME_API_KEY = "spoo_7jx8npCBVV-uIjaNOo8RN1pPAKOyW9Hp7I4g4E9KDuQ"
 
 CUTTLY_KEYS = [
     "e44b823fb02a09939a39c169b27bc15ee199f",
@@ -126,7 +118,6 @@ def shorten_cuttly(long_url: str) -> str:
             data = response.json()
             url_data = data.get("url", {})
             status = url_data.get("status")
-            # status 7 = success, status 2 = already shortened
             if status in [7, 2]:
                 cuttly_index += 1
                 return url_data.get("shortLink")
@@ -168,8 +159,7 @@ def shorten_tinyurl(long_url: str) -> str:
             logger.error(f"TinyURL error: {e}")
             tinyurl_index += 1
             attempts += 1
-
-    # Fallback — account ছাড়া ফ্রি endpoint
+    # Fallback
     try:
         fallback = requests.get(
             "https://tinyurl.com/api-create.php",
@@ -184,14 +174,15 @@ def shorten_tinyurl(long_url: str) -> str:
 
 
 def shorten_spoome(long_url: str) -> str:
+    """Spoo.me — কোনো API key লাগে না"""
     try:
         response = requests.post(
             "https://spoo.me/",
-            data={
-                "url": long_url,
-                "api-key": SPOOME_API_KEY
+            data={"url": long_url},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded"
             },
-            headers={"Accept": "application/json"},
             timeout=10
         )
         if response.status_code == 200:
@@ -201,7 +192,7 @@ def shorten_spoome(long_url: str) -> str:
                 if not short.startswith("http"):
                     short = "https://spoo.me/" + short
                 return short
-        logger.error(f"Spoo.me error: {response.status_code} - {response.text}")
+        logger.error(f"Spoo.me: {response.status_code} - {response.text[:100]}")
         return None
     except Exception as e:
         logger.error(f"Spoo.me exception: {e}")
@@ -223,8 +214,7 @@ def shorten_by_mode(base_url: str, mode: str) -> str:
             result = shorten_spoome(unique_url)
             mix_turn = 0
         return result
-
-    elif mode == "ct":  # Cutt.ly + TinyURL
+    elif mode == "ct":
         if pair_turns["ct"] == 0:
             result = shorten_cuttly(unique_url)
             pair_turns["ct"] = 1
@@ -232,8 +222,7 @@ def shorten_by_mode(base_url: str, mode: str) -> str:
             result = shorten_tinyurl(unique_url)
             pair_turns["ct"] = 0
         return result
-
-    elif mode == "ts":  # TinyURL + Spoo.me
+    elif mode == "ts":
         if pair_turns["ts"] == 0:
             result = shorten_tinyurl(unique_url)
             pair_turns["ts"] = 1
@@ -241,8 +230,7 @@ def shorten_by_mode(base_url: str, mode: str) -> str:
             result = shorten_spoome(unique_url)
             pair_turns["ts"] = 0
         return result
-
-    elif mode == "cs":  # Cutt.ly + Spoo.me
+    elif mode == "cs":
         if pair_turns["cs"] == 0:
             result = shorten_cuttly(unique_url)
             pair_turns["cs"] = 1
@@ -250,16 +238,12 @@ def shorten_by_mode(base_url: str, mode: str) -> str:
             result = shorten_spoome(unique_url)
             pair_turns["cs"] = 0
         return result
-
     elif mode == "cuttly":
         return shorten_cuttly(unique_url)
-
     elif mode == "tinyurl":
         return shorten_tinyurl(unique_url)
-
     elif mode == "spoome":
         return shorten_spoome(unique_url)
-
     return None
 
 
@@ -269,18 +253,10 @@ def is_valid_url(text: str) -> bool:
 
 def get_main_menu():
     keyboard = [
-        [
-            InlineKeyboardButton("🔀 Auto Mix", callback_data="mode_mix"),
-        ],
-        [
-            InlineKeyboardButton("🟢+🔵 Cutt.ly & TinyURL", callback_data="mode_ct"),
-        ],
-        [
-            InlineKeyboardButton("🔵+🟣 TinyURL & Spoo.me", callback_data="mode_ts"),
-        ],
-        [
-            InlineKeyboardButton("🟢+🟣 Cutt.ly & Spoo.me", callback_data="mode_cs"),
-        ],
+        [InlineKeyboardButton("🔀 Auto Mix", callback_data="mode_mix")],
+        [InlineKeyboardButton("🟢+🔵 Cutt.ly & TinyURL", callback_data="mode_ct")],
+        [InlineKeyboardButton("🔵+🟣 TinyURL & Spoo.me", callback_data="mode_ts")],
+        [InlineKeyboardButton("🟢+🟣 Cutt.ly & Spoo.me", callback_data="mode_cs")],
         [
             InlineKeyboardButton("🟢 Cutt.ly", callback_data="mode_cuttly"),
             InlineKeyboardButton("🔵 TinyURL", callback_data="mode_tinyurl"),
@@ -302,9 +278,7 @@ def get_count_buttons():
             InlineKeyboardButton("5️⃣0️⃣ ৫০টা", callback_data="count_50"),
             InlineKeyboardButton("💯 ১০০টা", callback_data="count_100"),
         ],
-        [
-            InlineKeyboardButton("🔙 পিছে যাও", callback_data="back_menu"),
-        ],
+        [InlineKeyboardButton("🔙 পিছে যাও", callback_data="back_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -313,10 +287,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚡ *URL Shortener Bot* ⚡\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "🔀 *Auto Mix* — Cutt.ly→TinyURL→Spoo.me\n"
-        "🟢+🔵 *Cutt.ly & TinyURL* — পালা করে\n"
-        "🔵+🟣 *TinyURL & Spoo.me* — পালা করে\n"
-        "🟢+🟣 *Cutt.ly & Spoo.me* — পালা করে\n"
+        "🔀 *Auto Mix* — তিনটা পালা করে\n"
+        "🟢+🔵 *Cutt.ly & TinyURL*\n"
+        "🔵+🟣 *TinyURL & Spoo.me*\n"
+        "🟢+🟣 *Cutt.ly & Spoo.me*\n"
         "🟢 *Cutt.ly Only*\n"
         "🔵 *TinyURL Only*\n"
         "🟣 *Spoo.me Only*\n"
@@ -328,7 +302,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-
     if not is_valid_url(text):
         await update.message.reply_text(
             "⚠️ *Valid URL দাও!*\n`http://` বা `https://` দিয়ে শুরু হতে হবে।",
@@ -356,30 +329,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = query.data
 
-    # পিছে যাও
     if data == "back_menu":
         if user_id in user_data and user_data[user_id].get("url"):
             url = user_data[user_id]["url"]
             await query.edit_message_text(
-                f"✅ *লিংক পেয়েছি!*\n\n"
-                f"🔗 `{url}`\n\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👇 *কোন মোডে Short করবে?*",
+                f"✅ *লিংক পেয়েছি!*\n\n🔗 `{url}`\n\n"
+                f"━━━━━━━━━━━━━━━━━━\n👇 *কোন মোডে Short করবে?*",
                 parse_mode="Markdown",
                 reply_markup=get_main_menu()
             )
         return
 
-    # মোড সিলেক্ট
     if data.startswith("mode_"):
         mode = data.split("_")[1]
-
         if user_id not in user_data:
             await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
             return
 
         user_data[user_id]["mode"] = mode
-
         mode_names = {
             "mix": "🔀 Auto Mix",
             "ct": "🟢+🔵 Cutt.ly & TinyURL",
@@ -389,9 +356,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "tinyurl": "🔵 TinyURL Only",
             "spoome": "🟣 Spoo.me Only",
         }
-
         await query.edit_message_text(
-            f"✅ *{mode_names.get(mode, mode)}* সিলেক্ট হয়েছে!\n\n"
+            f"✅ *{mode_names.get(mode)}* সিলেক্ট!\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👇 *কতটা Short লিংক বানাবে?*",
             parse_mode="Markdown",
@@ -399,17 +365,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Count সিলেক্ট
     if data.startswith("count_"):
         count = int(data.split("_")[1])
-
         if user_id not in user_data or not user_data[user_id].get("url"):
             await query.edit_message_text("⚠️ আগে একটা লিংক পাঠাও!")
             return
 
         base_url = user_data[user_id]["url"]
         mode = user_data[user_id].get("mode", "mix")
-
         mode_names = {
             "mix": "🔀 Auto Mix",
             "ct": "🟢+🔵 Cutt.ly & TinyURL",
@@ -421,7 +384,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         await query.edit_message_text(
-            f"⏳ *{mode_names.get(mode, mode)} দিয়ে {count}টি লিংক বানানো হচ্ছে...*\n"
+            f"⏳ *{mode_names.get(mode)} দিয়ে {count}টি লিংক বানানো হচ্ছে...*\n"
             f"একটু অপেক্ষা করো 🙏",
             parse_mode="Markdown"
         )
@@ -431,7 +394,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for i in range(1, count + 1):
             short = shorten_by_mode(base_url, mode)
-
             if short:
                 short_links.append(short)
             else:
@@ -445,22 +407,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except:
                     pass
-
             time.sleep(0.3)
 
         if not short_links:
             await query.edit_message_text(
-                "❌ কোনো লিংক বানানো যায়নি।\n\nসম্ভাব্য কারণ: API limit শেষ।\nঅন্য মোড চেষ্টা করো।"
+                "❌ কোনো লিংক বানানো যায়নি।\nঅন্য মোড চেষ্টা করো।"
             )
             return
 
         await query.edit_message_text(
-            f"✅ *{len(short_links)}টি Short লিংক তৈরি হয়েছে!*\n"
+            f"✅ *{len(short_links)}টি Short লিংক তৈরি!*\n"
             f"{'⚠️ ' + str(failed) + 'টি ব্যর্থ' if failed > 0 else '🎉 সব সফল!'}",
             parse_mode="Markdown"
         )
 
-        # শুধু লিংক পাঠাও
         chunk_size = 20
         for chunk_start in range(0, len(short_links), chunk_size):
             chunk = short_links[chunk_start:chunk_start + chunk_size]
@@ -468,8 +428,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time.sleep(0.3)
 
         await update.effective_message.reply_text(
-            "━━━━━━━━━━━━━━━━━━\n"
-            "🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
+            "━━━━━━━━━━━━━━━━━━\n🔄 *আরো লিংক বানাতে নতুন লিংক পাঠাও!*",
             parse_mode="Markdown",
             reply_markup=get_main_menu()
         )
@@ -480,10 +439,7 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    print("🤖 URL Shortener Premium Bot v5 চালু হচ্ছে...")
-    print(f"✅ Cutt.ly keys: {len(CUTTLY_KEYS)}টা")
-    print(f"✅ TinyURL keys: {len(TINYURL_KEYS)}টা")
-    print(f"✅ Spoo.me: সক্রিয়")
+    print("🤖 URL Shortener Premium Bot চালু হচ্ছে...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
